@@ -68,6 +68,18 @@ public class TryTest {
         assertThat(magicStatus).isEqualTo(DONE);
     }
 
+    @Test
+    public void should_return_value_for_successful_method_call_with_specified_exception() throws Exception {
+        // given
+        when(wizard.doMagic()).thenReturn(DONE);
+
+        // when
+        MagicStatus magicStatus = Try.it(wizard::doMagicOrThrowException).orThrow(EmptyStackException::new);
+
+        // then
+        assertThat(magicStatus).isEqualTo(DONE);
+    }
+
     @Test(expected = MagicException.class)
     public void should_throw_exception_if_occured() throws Exception {
         // given
