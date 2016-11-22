@@ -3,18 +3,22 @@ package it.podlodowski.javatry;
 import it.podlodowski.javatry.util.test.MagicException;
 import it.podlodowski.javatry.util.test.MagicStatus;
 import it.podlodowski.javatry.util.test.MagicWizard;
+import org.assertj.core.data.Offset;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EmptyStackException;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static it.podlodowski.javatry.util.test.MagicStatus.DONE;
 import static it.podlodowski.javatry.util.test.MagicStatus.FAILED;
@@ -115,6 +119,24 @@ public class TryTest {
 
         // then
         verify(wizard, times(3)).doMagic();
+    }
+
+    @Test
+    public void should_execute_retries_with_delay_if_delay_configured() throws Exception {
+        // given
+        when(wizard.doMagic()).thenReturn(FAILED, FAILED, DONE);
+        long startTime = System.currentTimeMillis();
+        List<Long> retryTimes = new ArrayList<>();
+
+        // when
+        Try.it(wizard::doMagicOrThrowException).times(3)
+                .onRetry(() -> retryTimes.add(System.currentTimeMillis()))
+                .withDelay(Duration.ofMillis(100)).now();
+
+        // then
+        assertThat(retryTimes).hasSize(2);
+        assertThat(retryTimes.get(0) - startTime).isGreaterThanOrEqualTo(100);
+        assertThat(retryTimes.get(1) - retryTimes.get(0)).isGreaterThanOrEqualTo(100);
     }
 
     @Test

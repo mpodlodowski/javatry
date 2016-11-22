@@ -2,6 +2,7 @@ package it.podlodowski.javatry.util.retry;
 
 import it.podlodowski.javatry.util.precondition.Preconditions;
 
+import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 
@@ -11,7 +12,7 @@ public class Retry {
         throw new InstantiationException("Instances of this class are forbidden.");
     }
 
-    public static <T> T runWithRetry(Callable<T> callable, int maxTries, Runnable onRetry) throws Exception {
+    public static <T> T runWithRetry(Callable<T> callable, int maxTries, Runnable onRetry, Duration delay) throws Exception {
         Preconditions.checkArgument(maxTries > 0, "maxTries must be positive number");
         int count = 0;
         while (true) {
@@ -21,6 +22,11 @@ public class Retry {
                 if (++count == maxTries) {
                     throw e;
                 } else {
+
+                    if (delay != null) {
+                        Thread.sleep(delay.toMillis());
+                    }
+
                     if (onRetry != null) {
                         onRetry.run();
                     }
@@ -30,12 +36,16 @@ public class Retry {
     }
 
     public static <T> T runWithRetry(Callable<T> callable, int maxTries) throws Exception {
-        return runWithRetry(callable, maxTries, null);
+        return runWithRetry(callable, maxTries, null, (Duration) null);
     }
 
-    public static <T> T runWithRetry(Callable<T> callable, int maxTries, Runnable onRetry,
+    public static <T> T runWithRetry(Callable<T> callable, int maxTries, Runnable onRetry) throws Exception {
+        return runWithRetry(callable, maxTries, onRetry, (Duration) null);
+    }
+
+    public static <T> T runWithRetry(Callable<T> callable, int maxTries, Duration delay, Runnable onRetry,
                                      Consumer<Exception> exceptionConsumer) {
-        return withExceptionConsumed(() -> runWithRetry(callable, maxTries, onRetry), exceptionConsumer);
+        return withExceptionConsumed(() -> runWithRetry(callable, maxTries, onRetry, delay), exceptionConsumer);
     }
 
     private static <T> T withExceptionConsumed(Callable<T> callable, Consumer<Exception> exceptionConsumer) {
