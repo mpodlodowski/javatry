@@ -15,6 +15,9 @@ import java.util.ArrayList;
 import java.util.EmptyStackException;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -223,5 +226,101 @@ public class TryTest {
         Try.it(wizard::doMagicOrThrowException).times(-1).now();
 
         // then an exception should be thrown
+    }
+
+    @Test
+    public void should_return_future() throws Exception {
+        // given
+        when(wizard.doMagic()).thenReturn(DONE);
+        // when
+        CompletableFuture<MagicStatus> future = Try.it(wizard::doMagicOrThrowException).future();
+        // then
+        assertThat(future.get()).isEqualTo(MagicStatus.DONE);
+    }
+
+    @Test
+    public void should_be_able_to_cancel_future() throws Exception {
+        // given
+        when(wizard.doMagic()).thenAnswer(invocation -> {
+            Thread.sleep(3000);
+            return MagicStatus.DONE;
+        });
+        // when
+        CompletableFuture<MagicStatus> future = Try.it(wizard::doMagicOrThrowException).future();
+        future.cancel(true);
+        // then
+        assertThat(future).isCancelled();
+    }
+
+    @Test
+    public void should_try_till_done_when_endless() throws Exception {
+        // given
+        when(wizard.doMagic()).thenReturn(FAILED, FAILED, FAILED, FAILED, DONE);
+
+        // when
+        CompletableFuture<MagicStatus> future = Try.it(wizard::doMagicOrThrowException)
+                .onRetry(wizard::excuseForMagicFailure)
+                .endless().future();
+        MagicStatus magicStatus = future.get(5, TimeUnit.SECONDS);
+
+        // then
+        verify(wizard, times(5)).doMagic();
+        verify(wizard, times(4)).excuseForMagicFailure();
+        assertThat(magicStatus).isEqualTo(DONE);
+    }
+
+    @Test(expected = TimeoutException.class)
+    public void should_throw_exception_when_endless_and_future_timed_out() throws Exception {
+        // given
+        when(wizard.doMagic()).thenReturn(FAILED);
+
+        // when
+        CompletableFuture<MagicStatus> future = Try.it(wizard::doMagicOrThrowException)
+                .onRetry(wizard::excuseForMagicFailure)
+                .endless().future();
+
+        future.get(3, TimeUnit.SECONDS);
+
+        // then
+        // should throw exception
+    }
+
+    @Test
+    public void should_execute_retries_with_delay_if_delay_configured_for_endless() throws Exception {
+        // given
+        when(wizard.doMagic()).thenReturn(FAILED, FAILED, DONE);
+        long startTime = System.currentTimeMillis();
+        List<Long> retryTimes = new ArrayList<>();
+
+        // when
+        CompletableFuture<MagicStatus> future = Try.it(wizard::doMagicOrThrowException)
+                .endless()
+                .onRetry(() -> retryTimes.add(System.currentTimeMillis()))
+                .withDelay(Duration.ofMillis(100)).future();
+
+        future.get(5, TimeUnit.SECONDS);
+        // then
+        assertThat(retryTimes).hasSize(2);
+        assertThat(retryTimes.get(0) - startTime).isGreaterThanOrEqualTo(100);
+        assertThat(retryTimes.get(1) - retryTimes.get(0)).isGreaterThanOrEqualTo(100);
+    }
+
+    @Test
+    public void should_fire_on_exception_callback_for_endless() throws Exception {
+        // given
+        List<Exception> expected = new ArrayList<>();
+        when(wizard.doMagic()).thenReturn(FAILED);
+
+        // when
+        CompletableFuture<MagicStatus> future = Try.it(wizard::doMagicOrThrowException)
+                .endless()
+                .onException(expected::add)
+                .future();
+        Thread.sleep(100);
+        future.getNow(FAILED);
+
+        // then
+        verify(wizard, atLeastOnce()).doMagic();
+        assertThat(expected).hasOnlyElementsOfType(MagicException.class);
     }
 }
